@@ -35,6 +35,24 @@ log_message() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $message" | tee -a "$LOG_FILE"
 }
 
+send_notification() {
+    local title="$1"
+    local message="$2"
+    local priority="${3:-default}"
+    local tags="${4:-}"
+
+    if [ -z "$NTFY_TOPIC" ]; then
+        return 0
+    fi
+
+    curl -s -o /dev/null \
+        -H "Title: $title" \
+        -H "Priority: $priority" \
+        -H "Tags: $tags" \
+        -d "$message" \
+        "https://ntfy.sh/$NTFY_TOPIC"
+}
+
 while getopts "s:d:i:e:h" opt; do
     case $opt in
         s) SOURCE_DIR="$OPTARG";;
@@ -51,12 +69,20 @@ BACKUP_DIR="${BACKUP_DIR:-$DEFAULT_BACKUP_DIR}"
 
 if [ ! -d "$SOURCE_DIR" ]; then
     log_message "Error: Source directory $SOURCE_DIR does not exist"
+    send_notification "Backup Failed" \
+        "Source directory does not exist: $SOURCE_DIR" \
+        "high" \
+        "warning,floppy_disk"
     exit 1
 fi
 
 mkdir -p "$BACKUP_DIR"
 if [ ! -d "$BACKUP_DIR" ]; then
     log_message "Error: Cannot create backup directory $BACKUP_DIR"
+    send_notification "Backup Failed" \
+        "Cannot create backup directory: $BACKUP_DIR" \
+        "high" \
+        "warning,floppy_disk"
     exit 1
 fi
 
@@ -120,12 +146,33 @@ if [ $? -eq 0 ]; then
         log_message "  Time taken for compression: $compression_time seconds"
         log_message "  Number of files backed up: $num_files"
         log_message "  Size of the final backup file: $backup_size"
+
+        send_notification "Backup Completed Successfully" \
+            "Files: $num_files
+Size: $backup_size
+Time: ${total_time}s (${compression_time}s compression)
+Backup: $BACKUP_NAME.tar.gz" \
+            "default" \
+            "white_check_mark,floppy_disk"
     else
         log_message "Error: Failed to create compressed archive"
+        send_notification "Backup Failed" \
+            "Failed to create compressed archive
+Source: $SOURCE_DIR
+Destination: $BACKUP_DIR" \
+            "high" \
+            "warning,floppy_disk"
         exit 1
     fi
 else
     log_message "Error: Backup failed"
+    send_notification "Backup Failed" \
+        "Rsync operation failed
+Source: $SOURCE_DIR
+Destination: $BACKUP_DIR
+Check logs: $LOG_FILE" \
+        "high" \
+        "warning,floppy_disk"
     rm -rf "$BACKUP_DIR/$BACKUP_NAME"
     exit 1
 fi

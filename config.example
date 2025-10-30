@@ -9,6 +9,13 @@ SOURCE_DIR="$HOME"
 # Destination directory for backups (default: $HOME/.qbkp/data)
 BACKUP_DIR="$HOME/.qbkp/data"
 
+# Ntfy.sh topic for notifications (optional)
+# If set, backup status notifications will be sent to ntfy.sh
+# Get notifications on your phone/desktop by subscribing to this topic
+# Example: NTFY_TOPIC="my-backup-alerts-xyz123"
+# Leave empty or comment out to disable notifications
+NTFY_TOPIC=""
+
 # Include patterns (bash array syntax)
 # If any include patterns are specified, only matching files will be backed up
 # Examples:

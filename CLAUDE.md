@@ -18,6 +18,7 @@ The core backup engine that:
 - Maintains a "latest" symlink pointing to the most recent backup
 - Automatically rotates backups, keeping only the 5 most recent archives
 - Generates a manifest.txt file listing all backed-up files with metadata
+- Sends push notifications via ntfy.sh on backup completion or failure (optional)
 
 Key flow:
 1. Rsync copies files from source to a timestamped directory, hard-linking unchanged files from the previous backup
@@ -41,6 +42,7 @@ Backups are configured via `~/.qbkp/config`, which is sourced by create_backup.s
 - BACKUP_DIR (default: $HOME/.qbkp/data)
 - INCLUDE_PATTERNS
 - EXCLUDE_PATTERNS
+- NTFY_TOPIC (optional: topic for push notifications via ntfy.sh)
 
 To get started, copy the example config:
 ```bash
@@ -48,6 +50,21 @@ mkdir -p ~/.qbkp
 cp config.example ~/.qbkp/config
 # Then edit ~/.qbkp/config to customize your backup settings
 ```
+
+### Setting up notifications
+
+To receive push notifications about backup status:
+
+1. Choose a unique topic name (e.g., `my-backups-xyz123`)
+2. Set `NTFY_TOPIC="your-topic-name"` in `~/.qbkp/config`
+3. Subscribe to notifications:
+   - **Mobile**: Install the ntfy app ([Android](https://play.google.com/store/apps/details?id=io.heckel.ntfy) / [iOS](https://apps.apple.com/app/ntfy/id1625396347)) and subscribe to your topic
+   - **Desktop**: Visit `https://ntfy.sh/your-topic-name` in your browser
+   - **CLI**: `curl -s https://ntfy.sh/your-topic-name/json`
+
+Notifications are sent for:
+- **Success**: Backup completion with statistics (files, size, duration)
+- **Failure**: Any error during backup with relevant details
 
 ## Common Commands
 
@@ -89,6 +106,7 @@ ls -lht ~/.qbkp/data/*.tar.gz
 - **Backup rotation**: Automatically keeps only the 5 most recent backups using `ls -t *.tar.gz | tail -n +6 | xargs -r rm --`
 - **Filter precedence**: If include patterns are specified, an implicit `--exclude=*` is added to exclude everything not explicitly included
 - **Logging**: All operations are logged to both stdout and `~/.qbkp/log/backup.log`
+- **Notifications**: Uses ntfy.sh for push notifications (requires curl). Notifications are sent with appropriate priority levels (default for success, high for failures) and emoji tags for visual distinction
 
 ## TODOs
 

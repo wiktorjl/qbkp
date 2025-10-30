@@ -1,0 +1,77 @@
+# qbkp Configuration File
+# Copy this file to ~/.qbkp/config and customize for your needs
+#
+# This file is sourced by create_backup.sh, so use bash syntax
+
+# Source directory to backup (default: $HOME)
+SOURCE_DIR="$HOME"
+
+# Destination directory for backups (default: $HOME/.qbkp/data)
+BACKUP_DIR="$HOME/.qbkp/data"
+
+# Include patterns (bash array syntax)
+# If any include patterns are specified, only matching files will be backed up
+# Examples:
+#   - "*.txt" matches all .txt files
+#   - "Documents/*" matches everything in the Documents directory
+#   - "Projects/important/*" matches everything in Projects/important/
+INCLUDE_PATTERNS=(
+    # "Documents/*"
+    # "Pictures/*"
+    # "*.pdf"
+)
+
+# Exclude patterns (bash array syntax)
+# Files/directories matching these patterns will be excluded from backups
+# Examples:
+#   - "*.tmp" excludes all temporary files
+#   - ".cache/" excludes the .cache directory
+#   - "node_modules/" excludes node_modules directories
+EXCLUDE_PATTERNS=(
+    # Common directories to exclude
+    ".cache/"
+    ".npm/"
+    ".local/share/Trash/"
+
+    # Development artifacts
+    # "node_modules/"
+    # "__pycache__/"
+    # ".git/"
+    # "target/"
+    # "build/"
+    # "dist/"
+
+    # Temporary files
+    # "*.tmp"
+    # "*.log"
+    # "*.swp"
+    # "*~"
+)
+
+# Example configurations:
+
+# Backup only specific directories:
+# INCLUDE_PATTERNS=(
+#     "Documents/*"
+#     "Pictures/*"
+#     "Projects/*"
+#     ".config/*"
+# )
+
+# Backup everything except large/temporary files:
+# EXCLUDE_PATTERNS=(
+#     "*.iso"
+#     "*.dmg"
+#     "*.tmp"
+#     ".cache/"
+#     "Downloads/*"
+#     "node_modules/"
+# )
+
+# Backup specific file types across home directory:
+# INCLUDE_PATTERNS=(
+#     "*.txt"
+#     "*.pdf"
+#     "*.doc"
+#     "*.docx"
+# )

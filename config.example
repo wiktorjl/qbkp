@@ -9,6 +9,12 @@ SOURCE_DIR="$HOME"
 # Destination directory for backups (default: $HOME/.qbkp/data)
 BACKUP_DIR="$HOME/.qbkp/data"
 
+# Number of backups to retain (default: 7)
+# The system will automatically delete old backups when this limit is exceeded
+# Minimum of 2 backups will always be kept for safety, even if this is set lower
+# Example: RETENTION_COUNT=10  # Keep 10 most recent backups
+RETENTION_COUNT=7
+
 # Ntfy.sh topic for notifications (optional)
 # If set, backup status notifications will be sent to ntfy.sh
 # Get notifications on your phone/desktop by subscribing to this topic

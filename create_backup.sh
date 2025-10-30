@@ -3,6 +3,7 @@
 CONFIG_FILE="$HOME/.qbkp/config"
 DEFAULT_SOURCE_DIR="$HOME"
 DEFAULT_BACKUP_DIR="$HOME/.qbkp/data"
+DEFAULT_RETENTION_COUNT=7
 INCLUDE_PATTERNS=()
 EXCLUDE_PATTERNS=()
 DATETIME=$(date +%Y%m%d_%H%M%S)
@@ -13,6 +14,8 @@ LOG_FILE="$HOME/.qbkp/log/backup.log"
 if [ -f "$CONFIG_FILE" ]; then
     source "$CONFIG_FILE"
 fi
+
+RETENTION_COUNT="${RETENTION_COUNT:-$DEFAULT_RETENTION_COUNT}"
 
 
 usage() {
@@ -51,6 +54,91 @@ send_notification() {
         -H "Tags: $tags" \
         -d "$message" \
         "https://ntfy.sh/$NTFY_TOPIC"
+}
+
+cleanup_old_backups() {
+    local backup_dir="$1"
+    local retention_count="$2"
+    local dry_run="${3:-false}"
+    local move_to_tmp="${4:-false}"
+
+    cd "$backup_dir" || return 1
+
+    # Count only qbkp backup files
+    local total_backups=$(ls -1 *.qbkp.tar.gz 2>/dev/null | wc -l)
+
+    if [ "$total_backups" -eq 0 ]; then
+        log_message "No backups found to clean up"
+        return 0
+    fi
+
+    # Calculate target: keep at least 2 backups, or retention_count if larger
+    local target_remaining=$retention_count
+    if [ "$target_remaining" -lt 2 ]; then
+        target_remaining=2
+    fi
+
+    # Calculate how many to delete
+    local to_delete=$((total_backups - target_remaining))
+
+    if [ "$to_delete" -le 0 ]; then
+        log_message "No cleanup needed. Current backups: $total_backups, Target: $target_remaining"
+        return 0
+    fi
+
+    # Get list of files to delete (oldest first, skipping the newest N)
+    local files_to_delete=$(ls -t *.qbkp.tar.gz | tail -n "+$((target_remaining + 1))")
+
+    if [ -z "$files_to_delete" ]; then
+        log_message "No backups to delete after safety checks"
+        return 0
+    fi
+
+    # Calculate space to be freed
+    local space_freed=0
+    local deleted_count=0
+    local cleanup_list=""
+
+    for file in $files_to_delete; do
+        local file_size=$(du -b "$file" 2>/dev/null | cut -f1)
+        space_freed=$((space_freed + file_size))
+        deleted_count=$((deleted_count + 1))
+        cleanup_list="${cleanup_list}  - $file\n"
+
+        if [ "$dry_run" = "true" ]; then
+            log_message "[DRY RUN] Would delete: $file"
+        elif [ "$move_to_tmp" = "true" ]; then
+            local tmp_dir="/tmp/qbkp_cleanup_$(date +%Y%m%d_%H%M%S)"
+            mkdir -p "$tmp_dir"
+            mv "$file" "$tmp_dir/" && log_message "Moved to $tmp_dir: $file"
+        else
+            rm -f "$file" && log_message "Deleted old backup: $file"
+        fi
+    done
+
+    # Convert bytes to human readable
+    local space_freed_human=$(numfmt --to=iec-i --suffix=B $space_freed 2>/dev/null || echo "${space_freed} bytes")
+
+    # Log cleanup summary
+    log_message "Cleanup summary: $deleted_count backup(s) processed, $space_freed_human freed"
+    log_message "Remaining backups: $((total_backups - deleted_count))"
+
+    # Send notification
+    local action="Deleted"
+    if [ "$dry_run" = "true" ]; then
+        action="Would delete"
+    elif [ "$move_to_tmp" = "true" ]; then
+        action="Moved to /tmp"
+    fi
+
+    send_notification "Backup Cleanup Completed" \
+        "$action: $deleted_count backup(s)
+Space freed: $space_freed_human
+Remaining: $((total_backups - deleted_count)) backup(s)" \
+        "default" \
+        "broom,floppy_disk"
+
+    return 0
 }
 
 while getopts "s:d:i:e:h" opt; do
@@ -122,7 +210,7 @@ if [ $? -eq 0 ]; then
 
     log_message "Creating compressed archive"
     compression_start_time=$(date +%s)
-    tar -cf - -C "$BACKUP_DIR" "$BACKUP_NAME" | pv | gzip > "$BACKUP_DIR/$BACKUP_NAME.tar.gz"
+    tar -cf - -C "$BACKUP_DIR" "$BACKUP_NAME" | pv | gzip > "$BACKUP_DIR/$BACKUP_NAME.qbkp.tar.gz"
     compression_end_time=$(date +%s)
 
     if [ $? -eq 0 ]; then
@@ -130,16 +218,15 @@ if [ $? -eq 0 ]; then
         log_message "Backup completed successfully"
         
         rm -f "$BACKUP_DIR/$LATEST_LINK"
-        ln -s "$BACKUP_NAME.tar.gz" "$BACKUP_DIR/$LATEST_LINK"
+        ln -s "$BACKUP_NAME.qbkp.tar.gz" "$BACKUP_DIR/$LATEST_LINK"
 
-        cd "$BACKUP_DIR"
-        ls -t *.tar.gz | tail -n +6 | xargs -r rm --
-        log_message "Cleaned up old backups"
+        # Cleanup old backups
+        cleanup_old_backups "$BACKUP_DIR" "$RETENTION_COUNT"
 
         end_time=$(date +%s)
         total_time=$((end_time - start_time))
         compression_time=$((compression_end_time - compression_start_time))
-        backup_size=$(du -h "$BACKUP_DIR/$BACKUP_NAME.tar.gz" | cut -f1)
+        backup_size=$(du -h "$BACKUP_DIR/$BACKUP_NAME.qbkp.tar.gz" | cut -f1)
 
         log_message "Backup statistics:"
         log_message "  Time taken for copying files: $((total_time - compression_time)) seconds"
@@ -151,7 +238,7 @@ if [ $? -eq 0 ]; then
             "Files: $num_files
 Size: $backup_size
 Time: ${total_time}s (${compression_time}s compression)
-Backup: $BACKUP_NAME.tar.gz" \
+Backup: $BACKUP_NAME.qbkp.tar.gz" \
             "default" \
             "white_check_mark,floppy_disk"
     else

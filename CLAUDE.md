@@ -4,29 +4,38 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-`qbkp` is a bash-based incremental backup system that uses rsync for efficient file synchronization and compression. It creates timestamped backups with hard-link deduplication and maintains a rolling window of the 5 most recent backups.
+`qbkp` is a bash-based incremental backup system that uses rsync for efficient file synchronization and compression. It creates timestamped backups with hard-link deduplication and maintains a configurable retention policy (default: 7 most recent backups, minimum: 2 for safety).
 
 ## Architecture
 
-The system consists of two main bash scripts:
+The system consists of three main bash scripts:
 
 ### create_backup.sh
 The core backup engine that:
 - Uses rsync with `--link-dest` to create incremental backups by hard-linking unchanged files from the latest backup
 - Supports include/exclude pattern filtering for selective backups
-- Creates a compressed tar.gz archive of each backup snapshot
+- Creates a compressed archive with `.qbkp.tar.gz` extension to identify qbkp backups
 - Maintains a "latest" symlink pointing to the most recent backup
-- Automatically rotates backups, keeping only the 5 most recent archives
+- Automatically rotates backups based on configurable retention policy (default: 7, minimum: 2)
 - Generates a manifest.txt file listing all backed-up files with metadata
-- Sends push notifications via ntfy.sh on backup completion or failure (optional)
+- Sends push notifications via ntfy.sh on backup completion, failure, or cleanup (optional)
 
 Key flow:
 1. Rsync copies files from source to a timestamped directory, hard-linking unchanged files from the previous backup
 2. Creates a manifest of all files in the backup
-3. Compresses the entire backup directory into a tar.gz archive
+3. Compresses the entire backup directory into a `.qbkp.tar.gz` archive
 4. Deletes the uncompressed directory to save space
 5. Updates the "latest" symlink
-6. Removes backups older than the 5 most recent
+6. Runs intelligent cleanup to maintain retention policy (keeps configured number of backups, minimum 2)
+
+### cleanup_backups.sh
+A standalone cleanup utility that:
+- Manually triggers backup cleanup based on retention policy
+- Supports `--dry-run` mode to preview what would be deleted
+- Supports `--move-to-tmp` mode to preserve files in /tmp instead of deleting
+- Ensures at least 2 backups are always kept for safety
+- Sends ntfy.sh notifications about cleanup operations
+- Logs all operations to `~/.qbkp/log/cleanup.log`
 
 ### schedule_backup.sh
 A cron job installer that:
@@ -37,9 +46,10 @@ A cron job installer that:
 
 ## Configuration
 
-Backups are configured via `~/.qbkp/config`, which is sourced by create_backup.sh if it exists. This allows setting default values for:
+Backups are configured via `~/.qbkp/config`, which is sourced by create_backup.sh and cleanup_backups.sh if it exists. This allows setting default values for:
 - SOURCE_DIR (default: $HOME)
 - BACKUP_DIR (default: $HOME/.qbkp/data)
+- RETENTION_COUNT (default: 7, minimum enforced: 2)
 - INCLUDE_PATTERNS
 - EXCLUDE_PATTERNS
 - NTFY_TOPIC (optional: topic for push notifications via ntfy.sh)
@@ -63,8 +73,9 @@ To receive push notifications about backup status:
    - **CLI**: `curl -s https://ntfy.sh/your-topic-name/json`
 
 Notifications are sent for:
-- **Success**: Backup completion with statistics (files, size, duration)
-- **Failure**: Any error during backup with relevant details
+- **Backup success**: Backup completion with statistics (files, size, duration)
+- **Backup failure**: Any error during backup with relevant details
+- **Cleanup**: Summary of deleted/moved backups with space freed
 
 ## Common Commands
 
@@ -96,16 +107,42 @@ cat ~/.qbkp/log/backup.log
 
 ### List available backups
 ```bash
-ls -lht ~/.qbkp/data/*.tar.gz
+ls -lht ~/.qbkp/data/*.qbkp.tar.gz
+```
+
+### Clean up old backups manually
+```bash
+# Preview what would be deleted
+./cleanup_backups.sh --dry-run
+
+# Delete old backups (keeps configured retention count)
+./cleanup_backups.sh
+
+# Move old backups to /tmp instead of deleting
+./cleanup_backups.sh --move-to-tmp
+
+# Keep 10 most recent backups (override config)
+./cleanup_backups.sh --retain 10
+```
+
+### View cleanup logs
+```bash
+cat ~/.qbkp/log/cleanup.log
 ```
 
 ## Key Implementation Details
 
+- **Archive naming**: Backups use `.qbkp.tar.gz` extension (e.g., `backup_20250930_143022.qbkp.tar.gz`) to identify qbkp-managed files
 - **Incremental backups**: Uses rsync's `--link-dest` to hard-link unchanged files, saving space
 - **Compression pipeline**: Uses `tar | pv | gzip` to compress with progress indication
-- **Backup rotation**: Automatically keeps only the 5 most recent backups using `ls -t *.tar.gz | tail -n +6 | xargs -r rm --`
+- **Intelligent cleanup**:
+  - Configurable retention via `RETENTION_COUNT` in config (default: 7)
+  - Always keeps minimum of 2 backups for safety, regardless of retention setting
+  - Only targets files with `.qbkp.tar.gz` extension
+  - Calculates space freed and sends notifications
+  - Supports dry-run and move-to-tmp modes for safe testing
 - **Filter precedence**: If include patterns are specified, an implicit `--exclude=*` is added to exclude everything not explicitly included
-- **Logging**: All operations are logged to both stdout and `~/.qbkp/log/backup.log`
+- **Logging**: All operations are logged to stdout and respective log files (`backup.log`, `cleanup.log`)
 - **Notifications**: Uses ntfy.sh for push notifications (requires curl). Notifications are sent with appropriate priority levels (default for success, high for failures) and emoji tags for visual distinction
 
 ## TODOs

@@ -382,8 +382,7 @@ chmod 755 ~/.qbkp/data
 
 - Bash 4.0+
 - rsync
-- tar
-- gzip
+- tar and gzip (standard utilities, usually pre-installed)
 - pv (pipe viewer, for progress indication)
 - curl (optional, for notifications)
 - numfmt (part of coreutils, for human-readable sizes)
@@ -392,12 +391,17 @@ Install dependencies on:
 
 **Ubuntu/Debian**:
 ```bash
-sudo apt-get install rsync tar gzip pv curl coreutils
+sudo apt install rsync pv curl coreutils
 ```
 
-**Fedora/CentOS**:
+**Fedora/RHEL/CentOS 8+**:
 ```bash
-sudo dnf install rsync tar gzip pv curl coreutils
+sudo dnf install rsync pv curl coreutils
+```
+
+**CentOS 7 (or older)**:
+```bash
+sudo yum install rsync pv curl coreutils
 ```
 
 **macOS**:
